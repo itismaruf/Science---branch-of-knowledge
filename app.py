@@ -5,7 +5,7 @@ import pandas as pd
 import os
 import time
 from utils import (
-    load_data, analyze_data_quality, generate_data_cleaning_report, show_data_issues, 
+    load_data, analyze_data_quality, 
     summarize_columns_for_gpt, ask_gpt_smart_cleaning, apply_gpt_cleaning,
     plot_data_visualizations, train_model, plot_predictions
 )
