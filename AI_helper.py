@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 # Загрузка переменных окружения
 load_dotenv()
-api_key = "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"
+api_key = "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"
 
 # Проверка API-ключа
 if not api_key:

@@ -17,9 +17,9 @@ import plotly.express as px
 import re
 from AI_helper import get_chatgpt_response
 
-
 def load_data(uploaded_file):
-    # Определяем формат файла по его имени или расширению
+    import re
+
     filename = uploaded_file.name.lower()
     try:
         if filename.endswith((".xlsx", ".xls")):
@@ -32,39 +32,37 @@ def load_data(uploaded_file):
         st.error(f"Ошибка при загрузке файла: {e}")
         raise
 
-    conversion_log = [] 
+    conversion_log = []
 
-    # Приведение данных к нужным типам и логирование преобразований
+    def looks_like_number(s):
+        """Проверка: выглядит ли строка как число"""
+        s = s.strip().replace(",", ".")
+        return bool(re.match(r"^-?\d+(\.\d+)?$", s))
+
     for col in df.columns:
         original_dtype = df[col].dtype
-
         if original_dtype == "object":
-            # Удаляем лишние пробелы и заменяем запятые на точки
-            df[col] = df[col].astype(str).str.replace(",", ".").str.strip()
+            # Удалим пробелы и заменим запятые на точки
+            df[col] = df[col].astype(str).str.strip().str.replace(",", ".")
 
-            # Пробуем привести данные к числовому типу
-            try:
-                df[col] = pd.to_numeric(df[col], errors="raise")
-                conversion_log.append(f"{col}: object → float (успешно)")
-            except Exception:
+            # Проверим, сколько значений выглядят как числа
+            is_number_like = df[col].apply(looks_like_number)
+            success_rate = is_number_like.mean()
+
+            if success_rate > 0.9:
                 try:
-                    df[col] = pd.to_numeric(df[col], errors="coerce")
-                    success_rate = df[col].notnull().mean()
-                    if success_rate > 0.9:
-                        conversion_log.append(f"{col}: object → float (успешность {success_rate:.0%})")
-                    else:
-                        df[col] = df[col].astype(str)
-                        conversion_log.append(f"{col}: остался как текст (только {success_rate:.0%} чисел)")
+                    df[col] = pd.to_numeric(df[col], errors="raise")
+                    conversion_log.append(f"{col}: object → float (успешно, {success_rate:.0%} чисел)")
                 except Exception:
                     df[col] = df[col].astype(str)
-                    conversion_log.append(f"{col}: остался как текст (неподдающийся формат)")
+                    conversion_log.append(f"{col}: остался как текст (ошибка при преобразовании)")
+            else:
+                conversion_log.append(f"{col}: остался как текст ({success_rate:.0%} числовых строк)")
         else:
             conversion_log.append(f"{col}: {original_dtype} (без изменений)")
 
-    # Сохраняем лог преобразования типов в session_state
     st.session_state["conversion_log"] = conversion_log
 
-    # Формируем базовую информацию о датасете
     base_info = {
         "Количество строк": df.shape[0],
         "Количество столбцов": df.shape[1],
@@ -80,7 +78,6 @@ def load_data(uploaded_file):
         st.markdown(f"- **{key}:** {value}")
 
     return df
-
 
 
 def summarize_data(df):
@@ -131,7 +128,7 @@ def apply_gpt_cleaning(df, gpt_response):
     to_fill = {}
     do_not_touch = []
 
-    # Извлечение рекомендаций GPT
+    # Извлечение рекомендаций GPT для заполнения
     fill_part = re.search(r"- Заполнить:\s*(.*?)(?:\n|$)", gpt_response)
     if fill_part:
         for item in fill_part.group(1).split(','):
@@ -141,13 +138,14 @@ def apply_gpt_cleaning(df, gpt_response):
                 if col in df.columns:
                     to_fill[col] = method
 
+    # Извлечение рекомендаций GPT для оставления без изменений
     notouch_part = re.search(r"- Не трогать:\s*(.*)", gpt_response)
     if notouch_part:
         do_not_touch = [x.strip() for x in notouch_part.group(1).split(',') if x.strip() in df.columns]
 
-    # Обработка и лог
     cleaning_log = []
 
+    # Проходим по всем колонкам и применяем инструкции или дефолтную очистку
     for col in df.columns:
         if col in to_fill:
             method = to_fill[col]
@@ -175,14 +173,36 @@ def apply_gpt_cleaning(df, gpt_response):
         elif col in do_not_touch:
             cleaning_log.append(f"{col}: оставлен без изменений")
         else:
+            # Если для колонки не указаны инструкции, и в ней есть пропуски, применяем дефолтное заполнение
             if df[col].isnull().sum() > 0:
-                cleaning_log.append(f"{col}: содержит пропуски, но не указан в инструкциях")
+                # Автоматически очищаем колонку по умолчанию
+                result = default_cleaning(df, col)
+                cleaning_log.append(f"{col}: содержит пропуски, не указан в инструкциях -> {result}")
             else:
                 cleaning_log.append(f"{col}: без пропусков")
-
-    # Сохраняем лог в сессию для отображения
+    
+    # Сохраняем лог очистки в session_state
     st.session_state["cleaning_log"] = cleaning_log
     return cleaning_log
+
+
+def default_cleaning(df, column):
+    """
+    Очищает колонку по умолчанию:
+    - Если числовая – заполняет пропуски средним.
+    - Если категориальная – заполняет наиболее частым значением (mode).
+    """
+    import pandas as pd
+    if pd.api.types.is_numeric_dtype(df[column]):
+        df[column].fillna(df[column].mean(), inplace=True)
+        return "очищено (mean)"
+    else:
+        mode_val = df[column].mode()
+        if not mode_val.empty:
+            df[column].fillna(mode_val[0], inplace=True)
+            return "очищено (mode)"
+        else:
+            return "очищение не выполнено (пустой mode)"
 
 
 # Отчёт об изменениях после очистки
