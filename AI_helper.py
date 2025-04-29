@@ -3,25 +3,41 @@ from dotenv import load_dotenv
 
 # Загрузка переменных окружения
 load_dotenv()
-api_key = "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"
+api_key = "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"
 
 # Проверка API-ключа
 if not api_key:
     raise ValueError("❌ API-ключ не найден. Убедитесь, что переменная OPENROUTER_API_KEY задана в .env.")
 
-# История диалога
+# История диалога и контекста
 chat_history = [
     {
         "role": "system",
-        "content": "Ты отвечаешь только на русском языке. Ответы всегда краткие, понятные и строго по сути. Не используй английский язык."
+        "content": (
+            "Ты помощник на русском языке. Всегда отвечай четко, по делу и с аналитической точностью, "
+            "но добавляй практические рекомендации и полезные комментарии, чтобы помочь пользователю понять, как использовать данные. "
+            "Если набор данных содержит информацию, например, о студентах, обрати внимание на аспекты эмоционального и образовательного состояния. "
+            "Будь дружелюбным, эмпатичным, кратким, ясным и конкретным в ответах."
+        )
     }
 ]
+
+# Глобальный контекст проекта
+context = {}
+
+def update_context(key, value):
+    """Обновление контекста проекта (фиксирует информацию о данных и цели)."""
+    context[key] = value
 
 def get_chatgpt_response(prompt, model="openai/gpt-3.5-turbo"):
     if not prompt or not isinstance(prompt, str):
         return "❌ Пустой или некорректный запрос."
 
-    chat_history.append({"role": "user", "content": prompt})
+    # Собираем текущий контекст в виде строк
+    context_info = "\n".join([f"{key}: {value}" for key, value in context.items()])
+    # Формируем полный запрос: сначала фиксированный контекст проекта, потом запрос
+    full_prompt = f"Контекст проекта:\n{context_info}\n\n{prompt}\n\nОтвечай кратко, конкретно и добавляй практические советы, если это уместно."
+    chat_history.append({"role": "user", "content": full_prompt})
 
     try:
         response = requests.post(
@@ -52,6 +68,7 @@ def get_chatgpt_response(prompt, model="openai/gpt-3.5-turbo"):
 # === PROMPTS ===
 
 def summarize_metrics(metrics_dict):
+    """Комментирует метрики модели с учетом их значения и контекста проекта."""
     if not metrics_dict or not isinstance(metrics_dict, dict):
         return "❌ Невозможно прокомментировать метрики — передан некорректный формат."
 
@@ -62,24 +79,30 @@ def summarize_metrics(metrics_dict):
 
     prompt = (
         summary +
-        "\nДай короткий, понятный и точный комментарий к этим метрикам. Объясняй, просто оцени их как эксперт."
+        "\nНа основе этих метрик дай четкий и аналитический комментарий. "
+        "Учитывай цели проекта, что важно для пользователя, и добавь рекомендации по улучшению, если это возможно."
     )
     return get_chatgpt_response(prompt)
 
-def suggest_model(df_info):
-    if not df_info:
-        return "❌ Нет данных для анализа."
+def suggest_model(df_info, user_goal):
+    """Рекомендация модели на основе структуры данных и цели анализа."""
+    if not df_info or not user_goal:
+        return "❌ Недостаточно данных для рекомендации модели."
+
+    update_context("df_info", df_info)
+    update_context("user_goal", user_goal)
 
     prompt = (
         f"Вот структура данных:\n{df_info}\n\n"
-        "Выбери одну из моделей: Decision Tree, Logistic Regression, Neural Network. "
-        "Ответь только названием подходящей модели и переменной (с обяснениеям), которую нужно предсказывать. Объясни в 1-2 предложении."
+        f"Цель пользователя: {user_goal}\n\n"
+        "Какая модель (например, Decision Tree, Logistic Regression, Neural Network) лучше всего подойдет для достижения цели? "
+        "Ответь названием модели и кратким объяснением выбора, добавив комментарии о том, как эта модель может помочь в реальной жизни."
     )
     return get_chatgpt_response(prompt)
 
 def post_prediction_advice(y_pred, model_type, target_name, user_goal):
+    """Совет по интерпретации результатов прогнозирования."""
     try:
-        # Преобразование предсказаний к списку
         if hasattr(y_pred, 'tolist'):
             y_pred_list = y_pred.tolist()
         else:
@@ -89,10 +112,13 @@ def post_prediction_advice(y_pred, model_type, target_name, user_goal):
             return "❌ Нет предсказаний для анализа."
 
         short_pred = y_pred_list[:10]
+        update_context("last_predictions", short_pred)
+
         prompt = (
             f"Использована модель {model_type} для предсказания '{target_name}'. "
             f"Пример предсказаний: {short_pred}. Цель пользователя: {user_goal}. "
-            "Дай короткий, практичный совет (1–2 предложения), как интерпретировать результат или что делать дальше."
+            "Объясни простыми словами, что означают результаты, и дай рекомендации, что делать дальше, "
+            "обращая внимание на практические шаги для улучшения ситуации."
         )
         return get_chatgpt_response(prompt)
 
@@ -100,8 +126,9 @@ def post_prediction_advice(y_pred, model_type, target_name, user_goal):
         return f"❌ Ошибка при обработке предсказаний: {e}"
 
 def continue_chat(user_message):
+    """Обрабатывает любое сообщение от пользователя с учетом контекста проекта."""
     if not user_message or not isinstance(user_message, str):
         return "❌ Пустой или некорректный запрос."
 
-    prompt = user_message.strip() + "\nОтветь чётко, по делу, не выходи за рамки вопроса."
+    prompt = user_message.strip() + "\nОтветь четко, с учетом контекста проекта и целей пользователя."
     return get_chatgpt_response(prompt)

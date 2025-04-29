@@ -5,48 +5,66 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neural_network import MLPClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import classification_report
+
 import plotly.express as px
 import re
 from AI_helper import get_chatgpt_response
 
-def load_data(uploaded_file):
-    df = pd.read_csv(uploaded_file)
-    conversion_log = []
 
+def load_data(uploaded_file):
+    # Определяем формат файла по его имени или расширению
+    filename = uploaded_file.name.lower()
+    try:
+        if filename.endswith((".xlsx", ".xls")):
+            df = pd.read_excel(uploaded_file)
+        elif filename.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+        else:
+            raise ValueError("Неподдерживаемый формат файла. Используйте CSV, XLSX или XLS.")
+    except Exception as e:
+        st.error(f"Ошибка при загрузке файла: {e}")
+        raise
+
+    conversion_log = [] 
+
+    # Приведение данных к нужным типам и логирование преобразований
     for col in df.columns:
         original_dtype = df[col].dtype
 
         if original_dtype == "object":
-            # Удаляем лишние пробелы и запятые
+            # Удаляем лишние пробелы и заменяем запятые на точки
             df[col] = df[col].astype(str).str.replace(",", ".").str.strip()
 
-            # Пробуем привести к числу
+            # Пробуем привести данные к числовому типу
             try:
                 df[col] = pd.to_numeric(df[col], errors="raise")
                 conversion_log.append(f"{col}: object → float (успешно)")
-            except:
+            except Exception:
                 try:
                     df[col] = pd.to_numeric(df[col], errors="coerce")
                     success_rate = df[col].notnull().mean()
                     if success_rate > 0.9:
-                        conversion_log.append(f"{col}: object → float (по успешности {success_rate:.0%})")
+                        conversion_log.append(f"{col}: object → float (успешность {success_rate:.0%})")
                     else:
                         df[col] = df[col].astype(str)
                         conversion_log.append(f"{col}: остался как текст (только {success_rate:.0%} чисел)")
-                except:
+                except Exception:
                     df[col] = df[col].astype(str)
                     conversion_log.append(f"{col}: остался как текст (неподдающийся формат)")
         else:
             conversion_log.append(f"{col}: {original_dtype} (без изменений)")
 
-    # Сохраняем лог преобразования типов
+    # Сохраняем лог преобразования типов в session_state
     st.session_state["conversion_log"] = conversion_log
 
-    # 📊 Формируем базовую информацию о датасете
+    # Формируем базовую информацию о датасете
     base_info = {
         "Количество строк": df.shape[0],
         "Количество столбцов": df.shape[1],
@@ -58,10 +76,11 @@ def load_data(uploaded_file):
 
     st.session_state["base_info"] = base_info
     st.subheader("📊 Базовая информация о данных")
-    for key, value in st.session_state["base_info"].items():
+    for key, value in base_info.items():
         st.markdown(f"- **{key}:** {value}")
 
     return df
+
 
 
 def summarize_data(df):
@@ -166,31 +185,6 @@ def apply_gpt_cleaning(df, gpt_response):
     return cleaning_log
 
 
-# Анализ качества данных
-
-def analyze_data_quality(df: pd.DataFrame) -> str:
-    total_rows = len(df)
-    total_cols = len(df.columns)
-    missing_total = df.isnull().sum().sum()
-    duplicated_rows = df.duplicated().sum()
-    dtypes_summary = df.dtypes.value_counts().to_dict()
-
-    dtype_text = ", ".join([f"{v} столбцов с типом {k}" for k, v in dtypes_summary.items()])
-
-    summary = f"""
-✅ В вашем наборе данных {total_rows} строк и {total_cols} столбцов.
-
-🧼 Очистка данных:
-- Было удалено {duplicated_rows} дублирующих строк.
-- Пропущенных значений: {'нет' if missing_total == 0 else missing_total}.
-
-🔎 Типы данных: {dtype_text}.
-
-🎉 Данные готовы к дальнейшему анализу и обучению модели.
-"""
-    return summary
-
-
 # Отчёт об изменениях после очистки
 
 def generate_data_cleaning_report(df_original, df_cleaned):
@@ -229,7 +223,6 @@ def show_data_issues(issues_dict):
         st.dataframe(v)
 
 
-# 3. Визуализация данных
 def plot_data_visualizations(df, x, y=None, top_n=None, numeric_filters=None, chart_type="Автоматически"):
     try:
         if y and x == y:
@@ -251,22 +244,108 @@ def plot_data_visualizations(df, x, y=None, top_n=None, numeric_filters=None, ch
         x_is_num = pd.api.types.is_numeric_dtype(df[x])
         y_is_num = pd.api.types.is_numeric_dtype(df[y]) if y else False
 
+        # Проверка, является ли столбец ID или уникальным
+        if df[x].nunique() == len(df[x]):
+            st.warning("Вы выбрали уникальный идентификатор (например, ID). Для этого типа данных визуализация не имеет смысла.")
+            return None
+
         # --- Обработка ручного выбора ---
         if chart_type != "Автоматически":
             st.info(f"Выбранный тип графика: **{chart_type}**")
             if chart_type == "Гистограмма":
-                return px.histogram(df, x=x, nbins=30, title=f'Histogram: {x}')
+                if x_is_num:
+                    return px.histogram(
+                        df,
+                        x=x,
+                        nbins=30,
+                        title=f'Histogram: {x}',
+                        color_discrete_sequence=px.colors.qualitative.Vivid  # Исправлено для работы с категориальными цветами
+                    )
+                else:
+                    return px.histogram(
+                        df,
+                        x=x,
+                        title=f'Histogram: {x}',
+                        color=x,
+                        color_discrete_sequence=px.colors.qualitative.Safe
+                    )
             elif chart_type == "Круговая диаграмма":
                 counts = df[x].value_counts()
                 if top_n:
                     counts = counts.nlargest(top_n)
-                return px.pie(values=counts.values, names=counts.index, title=f'Pie Chart: {x}')
+                return px.pie(
+                    values=counts.values,
+                    names=counts.index,
+                    title=f'Pie Chart: {x}',
+                    color_discrete_sequence=px.colors.qualitative.Bold
+                )
             elif chart_type == "Точечный график" and y:
-                return px.scatter(df, x=x, y=y, title=f'Scatter: {x} vs {y}')
+                if not x_is_num:
+                    color_param = x
+                elif not y_is_num:
+                    color_param = y
+                else:
+                    color_param = None
+                if color_param:
+                    return px.scatter(
+                        df,
+                        x=x,
+                        y=y,
+                        title=f'Scatter: {x} vs {y}',
+                        color=color_param,
+                        color_discrete_sequence=px.colors.qualitative.Dark2
+                    )
+                else:
+                    return px.scatter(
+                        df,
+                        x=x,
+                        y=y,
+                        title=f'Scatter: {x} vs {y}',
+                        color_continuous_scale=px.colors.sequential.Inferno
+                    )
             elif chart_type == "Boxplot" and y:
-                return px.box(df, x=x, y=y, title=f'Boxplot: {x} vs {y}')
+                if not x_is_num:
+                    return px.box(
+                        df,
+                        x=x,
+                        y=y,
+                        title=f'Boxplot: {x} vs {y}',
+                        color=x,
+                        color_discrete_sequence=px.colors.qualitative.Pastel2
+                    )
+                else:
+                    return px.box(
+                        df,
+                        x=x,
+                        y=y,
+                        title=f'Boxplot: {x} vs {y}'
+                    )
             elif chart_type == "Bar-график" and y:
-                return px.bar(df, x=x, y=y, title=f'Bar: {x} vs {y}')
+                if not x_is_num:
+                    return px.bar(
+                        df,
+                        x=x,
+                        y=y,
+                        title=f'Bar: {x} vs {y}',
+                        color=x,
+                        color_discrete_sequence=px.colors.qualitative.Bold
+                    )
+                else:
+                    return px.bar(
+                        df,
+                        x=x,
+                        y=y,
+                        title=f'Bar: {x} vs {y}'
+                    )
+            elif chart_type == "Лайнплот" and x and y:
+                return px.line(
+                    df,
+                    x=x,
+                    y=y,
+                    title=f'Line Plot: {x} vs {y}',
+                    markers=True,
+                    color_discrete_sequence=px.colors.qualitative.Vivid
+                )
             else:
                 st.warning("Для выбранного типа графика необходима вторая переменная Y.")
                 return None
@@ -275,47 +354,106 @@ def plot_data_visualizations(df, x, y=None, top_n=None, numeric_filters=None, ch
         if y:
             if x_is_num and y_is_num:
                 st.info(f"График: Scatter — числовая взаимосвязь `{x}` и `{y}`")
-                return px.scatter(df, x=x, y=y, title=f'Scatter: {x} vs {y}')
-
+                return px.scatter(
+                    df, x=x, y=y,
+                    title=f'Scatter: {x} vs {y}',
+                    color_continuous_scale=px.colors.sequential.Inferno
+                )
             elif y_is_num and not x_is_num:
                 if df[x].nunique() <= 5:
                     st.info(f"График: Bar — среднее значение `{y}` по `{x}`")
                     agg_df = df.groupby(x)[y].mean().reset_index()
-                    return px.bar(agg_df, x=x, y=y, title=f'Bar: {x} vs {y}')
+                    return px.bar(
+                        agg_df,
+                        x=x,
+                        y=y,
+                        title=f'Bar: {x} vs {y}',
+                        color=x,
+                        color_discrete_sequence=px.colors.qualitative.Safe
+                    )
                 else:
                     st.info(f"График: Boxplot — распределение `{y}` по `{x}`")
-                    return px.box(df, x=x, y=y, title=f'Boxplot: {x} vs {y}')
-
+                    return px.box(
+                        df,
+                        x=x,
+                        y=y,
+                        title=f'Boxplot: {x} vs {y}',
+                        color=x,
+                        color_discrete_sequence=px.colors.qualitative.Pastel2
+                    )
             elif not x_is_num and not y_is_num:
-                st.info(f"График: Bar — категории `{x}` и цвет по `{y}`")
-                return px.histogram(df, x=x, color=y, barmode="group", title=f'Bar: {x} by {y}')
-
+                st.info(f"График: Bar — категории `{x}` с разделением по `{y}`")
+                return px.histogram(
+                    df,
+                    x=x,
+                    color=y,
+                    barmode="group",
+                    title=f'Bar: {x} by {y}',
+                    color_discrete_sequence=px.colors.qualitative.Bold
+                )
             else:
-                return px.bar(df, x=x, y=y, title=f'Bar: {x} vs {y}')
+                return px.bar(
+                    df,
+                    x=x,
+                    y=y,
+                    title=f'Bar: {x} vs {y}',
+                    color_discrete_sequence=px.colors.qualitative.Safe
+                )
         else:
             if x_is_num:
                 st.info(f"График: Histogram — распределение значений `{x}`")
-                return px.histogram(df, x=x, nbins=30, title=f'Histogram: {x}')
+                return px.histogram(
+                    df,
+                    x=x,
+                    nbins=30,
+                    title=f'Histogram: {x}',
+                    color_discrete_sequence=px.colors.qualitative.Pastel
+                )
             else:
                 counts = df[x].value_counts()
                 if top_n:
                     counts = counts.nlargest(top_n)
                 st.info(f"График: Pie — распределение категорий по `{x}`")
-                return px.pie(values=counts.values, names=counts.index, title=f'Pie Chart: {x}')
+                return px.pie(
+                    values=counts.values,
+                    names=counts.index,
+                    title=f'Pie Chart: {x}',
+                    color_discrete_sequence=px.colors.qualitative.Bold
+                )
 
     except Exception as e:
         st.error(f"Ошибка визуализации: {e}")
         return None
-    
 
-# Обучение модели
+
+
+
+# Обучение модели с тщательной проверкой данных
 def train_model(df, target_column, model_type):
     df = df.copy()
     st.info("🚀 Начинаем обучение модели...")
 
-    # Разделим признаки и целевую переменную
+    # Проверка целевой переменной
+    if target_column not in df.columns:
+        st.error("❌ Целевая переменная не найдена в данных.")
+        return None, None, None, None, None
+
+    if df[target_column].nunique() < 2:
+        st.error(
+            "❌ Целевая переменная должна иметь как минимум два уникальных значения. "
+            "Пожалуйста, выберите другой столбец."
+        )
+        return None, None, None, None, None
+
+    # Разделение признаков и целевой переменной
     X = df.drop(columns=[target_column])
     y = df[target_column]
+
+    # Исключение явно идентификаторных столбцов (например, ID)
+    for col in X.columns:
+        if X[col].nunique() == len(X[col]):
+            st.warning(f"⚠️ Столбец '{col}' выглядит как уникальный идентификатор и будет исключён из обучения.")
+            X = X.drop(columns=[col])
 
     # Кодирование категориальных признаков
     for col in X.select_dtypes(include='object').columns:
@@ -326,10 +464,7 @@ def train_model(df, target_column, model_type):
         st.error(
             "⚠️ Обнаружены пропущенные значения в данных. "
             "Модель не может быть обучена, пока они не будут обработаны. "
-            "Пожалуйста, попробуйте:\n"
-            "- воспользоваться функцией умной очистки,\n"
-            "- или выбрать другую целевую переменную,\n"
-            "- или предварительно заполнить/удалить пропуски вручную."
+            "Пожалуйста, воспользуйтесь функцией умной очистки или предобработкой данных."
         )
         return None, None, None, None, None
 
@@ -337,20 +472,30 @@ def train_model(df, target_column, model_type):
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    # Кодирование целевой переменной, если нужно
+    # Кодирование целевой переменной, если это необходимо
     if y.dtype == "object":
         y = LabelEncoder().fit_transform(y.astype(str))
 
-    # Разделение на тренировочную и тестовую выборки
-    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+    # Разделение на обучающую и тестовую выборки (80/20)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_scaled, y, test_size=0.2, random_state=42
+    )
 
-    # Инициализация модели
+    # Инициализация модели на основе выбранного типа
     if model_type == "Decision Tree":
-        model = DecisionTreeClassifier()
+        model = DecisionTreeClassifier(random_state=42)
     elif model_type == "Logistic Regression":
-        model = LogisticRegression()
+        model = LogisticRegression(max_iter=200, random_state=42)
     elif model_type == "Neural Network":
         model = MLPClassifier(hidden_layer_sizes=(64, 32), max_iter=500, random_state=42)
+    elif model_type == "Random Forest":
+        model = RandomForestClassifier(random_state=42)
+    elif model_type == "Support Vector Machine":
+        model = SVC(probability=True, random_state=42)
+    elif model_type == "K Nearest Neighbors":
+        model = KNeighborsClassifier(n_neighbors=5)
+    elif model_type == "Gradient Boosting":
+        model = GradientBoostingClassifier(random_state=42)
     else:
         st.error("❌ Неподдерживаемый тип модели.")
         return None, None, None, None, None
@@ -359,18 +504,37 @@ def train_model(df, target_column, model_type):
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
-    # Вычисление метрик
+    # Вычисление метрик классификации
     metrics = classification_report(y_test, y_pred, output_dict=True)
     st.success("✅ Модель обучена успешно!")
 
     return metrics, model, X_test, y_test, y_pred
 
-# 5. Визуализация предсказаний
 def plot_predictions(y_test, y_pred):
-    st.subheader("📊 Матрица ошибок (Confusion Matrix)")
-    cm = confusion_matrix(y_test, y_pred)
-    fig, ax = plt.subplots()
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
-    ax.set_xlabel("Предсказано")
-    ax.set_ylabel("Истинное значение")
-    st.pyplot(fig)
+    st.subheader("📊 Анализ предсказаний")
+    
+    # Визуализация распределения истинных и предсказанных значений
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**Распределение истинных значений**")
+        fig_true, ax_true = plt.subplots()
+        sns.histplot(y_test, kde=False, color="green", ax=ax_true, bins=10)
+        ax_true.set_title("Истинные значения")
+        ax_true.set_xlabel("Классы")
+        ax_true.set_ylabel("Количество")
+        st.pyplot(fig_true)
+
+    with col2:
+        st.markdown("**Распределение предсказанных значений**")
+        fig_pred, ax_pred = plt.subplots()
+        sns.histplot(y_pred, kde=False, color="blue", ax=ax_pred, bins=10)
+        ax_pred.set_title("Предсказанные значения")
+        ax_pred.set_xlabel("Классы")
+        ax_pred.set_ylabel("Количество")
+        st.pyplot(fig_pred)
+
+    # Краткий вывод метрик
+    st.markdown("**Ключевые метрики классификации:**")
+    accuracy = (y_test == y_pred).mean() * 100
+    st.success(f"Точность модели: {accuracy:.2f}%")
