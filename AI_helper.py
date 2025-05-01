@@ -1,7 +1,7 @@
 import requests
 from dotenv import load_dotenv
-import streamlit as st
 import os
+import streamlit as st
 
 # Загрузка переменных окружения
 load_dotenv()
