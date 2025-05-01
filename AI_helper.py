@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 # Загрузка переменных окружения
 load_dotenv()
-api_key = "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"
+api_key = "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"
 
 # Проверка API-ключа
 if not api_key:
@@ -32,7 +32,7 @@ def update_context(key, value):
     """Обновление контекста проекта (фиксирует информацию о данных и цели)."""
     context[key] = value
 
-def get_chatgpt_response(prompt, model="deepseek/deepseek-prover-v2:free"):
+def get_chatgpt_response(prompt, model="deepseek/deepseek-r1:free"):
     if not prompt or not isinstance(prompt, str):
         return "❌ Пустой или некорректный запрос."
 
