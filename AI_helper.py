@@ -1,9 +1,10 @@
 import requests
 from dotenv import load_dotenv
+import streamlit as st
 
 # Загрузка переменных окружения
 load_dotenv()
-api_key = "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"
+api_key = "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" #st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
 
 # Проверка API-ключа
 if not api_key:
