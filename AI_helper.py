@@ -94,31 +94,35 @@ def default_cleaning(df, column):
 
 
 def apply_gpt_cleaning(df, gpt_response):
-    import re
     to_fill = {}
     do_not_touch = []
 
-    # Извлечение рекомендаций GPT для заполнения
-    fill_part = re.search(r"- Заполнить:\s*(.*?)(?:\n|$)", gpt_response)
-    if fill_part:
-        for item in fill_part.group(1).split(','):
-            parts = item.strip().split(':')
-            if len(parts) == 2:
-                col, method = parts[0].strip(), parts[1].strip()
+    # Обработка блока рекомендаций для заполнения
+    fill_match = re.search(r"- Заполнить:\s*((?:.|\n)*?)(?:\n-|\Z)", gpt_response, re.DOTALL)
+    if fill_match:
+        fill_content = fill_match.group(1).strip()
+        # Разбиваем блок рекомендаций по строкам
+        for line in fill_content.splitlines():
+            if ':' in line:
+                parts = line.split(':', 1)  # разделяем только по первому двоеточию
+                col = parts[0].strip()
+                method = parts[1].strip()
                 if col in df.columns:
                     to_fill[col] = method
 
-    # Извлечение рекомендаций GPT для оставления без изменений
-    notouch_part = re.search(r"- Не трогать:\s*(.*)", gpt_response)
-    if notouch_part:
-        do_not_touch = [x.strip() for x in notouch_part.group(1).split(',') if x.strip() in df.columns]
+    # Обработка блока инструкций "Не трогать"
+    notouch_match = re.search(r"- Не трогать:\s*((?:.|\n)*?)(?:\n-|\Z)", gpt_response, re.DOTALL)
+    if notouch_match:
+        notouch_content = notouch_match.group(1).strip()
+        # Разбиваем полученное содержимое на строки и оставляем те, совпадающие с именами колонок
+        do_not_touch = [x.strip() for x in notouch_content.splitlines() if x.strip() in df.columns]
 
     cleaning_log = []
 
-    # Проходим по всем колонкам и применяем инструкции или дефолтную очистку
+    # Применяем инструкции для каждой колонки
     for col in df.columns:
         if col in to_fill:
-            method = to_fill[col]
+            method = to_fill[col].lower()
             if df[col].isnull().sum() > 0:
                 try:
                     if method == "mean":
@@ -143,18 +147,15 @@ def apply_gpt_cleaning(df, gpt_response):
         elif col in do_not_touch:
             cleaning_log.append(f"{col}: оставлен без изменений")
         else:
-            # Если для колонки не указаны инструкции, и в ней есть пропуски, применяем дефолтное заполнение
+            # Если для колонки нет явных инструкций, используется дефолтная очистка
             if df[col].isnull().sum() > 0:
-                # Автоматически очищаем колонку по умолчанию
                 result = default_cleaning(df, col)
                 cleaning_log.append(f"{col}: содержит пропуски, не указан в инструкциях -> {result}")
             else:
                 cleaning_log.append(f"{col}: без пропусков")
     
-    # Сохраняем лог очистки в session_state
     st.session_state["cleaning_log"] = cleaning_log
     return cleaning_log
-
 
 # === PROMPTS ===
 
