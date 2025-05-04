@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 import os
 import streamlit as st
 import os
-
+import pandas as pd
 # Загрузка переменных окружения
 load_dotenv()
 api_key = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
@@ -23,7 +23,7 @@ chat_history = [
             "Если набор данных содержит информацию, например, о студентах, обрати внимание на аспекты эмоционального и образовательного состояния. "
             "Будь дружелюбным, эмпатичным, кратким, ясным и конкретным в ответах."
             "Некогда не говори по англисский! Всегда по русский!"
-            "Будь внимательно, конскнтрируйся на то что просять, не скажи лишное слова!, (Отвечай строго по формату который простять)"
+            "Будь внимательно, конскнтрируйся на то что просять, не скажи лишное слова!"
         )
     }
 ]
@@ -70,6 +70,91 @@ def get_chatgpt_response(prompt, model="deepseek/deepseek-r1:free"):
 
     except Exception as e:
         return f"❌ Ошибка при запросе к OpenRouter API: {e}"
+
+
+# === Умная отчистка ===
+
+def default_cleaning(df, column):
+    """
+    Очищает колонку по умолчанию:
+    - Если числовая – заполняет пропуски средним.
+    - Если категориальная – заполняет наиболее частым значением (mode).
+    """
+    if pd.api.types.is_numeric_dtype(df[column]):
+        df[column].fillna(df[column].mean(), inplace=True)
+        return "очищено (mean)"
+    else:
+        mode_val = df[column].mode()
+        if not mode_val.empty:
+            df[column].fillna(mode_val[0], inplace=True)
+            return "очищено (mode)"
+        else:
+            return "очищение не выполнено (пустой mode)"
+
+
+
+def apply_gpt_cleaning(df, gpt_response):
+    import re
+    to_fill = {}
+    do_not_touch = []
+
+    # Извлечение рекомендаций GPT для заполнения
+    fill_part = re.search(r"- Заполнить:\s*(.*?)(?:\n|$)", gpt_response)
+    if fill_part:
+        for item in fill_part.group(1).split(','):
+            parts = item.strip().split(':')
+            if len(parts) == 2:
+                col, method = parts[0].strip(), parts[1].strip()
+                if col in df.columns:
+                    to_fill[col] = method
+
+    # Извлечение рекомендаций GPT для оставления без изменений
+    notouch_part = re.search(r"- Не трогать:\s*(.*)", gpt_response)
+    if notouch_part:
+        do_not_touch = [x.strip() for x in notouch_part.group(1).split(',') if x.strip() in df.columns]
+
+    cleaning_log = []
+
+    # Проходим по всем колонкам и применяем инструкции или дефолтную очистку
+    for col in df.columns:
+        if col in to_fill:
+            method = to_fill[col]
+            if df[col].isnull().sum() > 0:
+                try:
+                    if method == "mean":
+                        df[col].fillna(df[col].mean(), inplace=True)
+                        cleaning_log.append(f"{col}: заполнено (mean)")
+                    elif method == "median":
+                        df[col].fillna(df[col].median(), inplace=True)
+                        cleaning_log.append(f"{col}: заполнено (median)")
+                    elif method == "mode":
+                        mode_val = df[col].mode()
+                        if not mode_val.empty:
+                            df[col].fillna(mode_val[0], inplace=True)
+                            cleaning_log.append(f"{col}: заполнено (mode)")
+                        else:
+                            cleaning_log.append(f"{col}: не удалось заполнить (пустой mode)")
+                    else:
+                        cleaning_log.append(f"{col}: неизвестный метод заполнения ({method})")
+                except Exception as e:
+                    cleaning_log.append(f"{col}: ошибка при заполнении → {str(e)}")
+            else:
+                cleaning_log.append(f"{col}: пропусков нет, не требуется заполнение")
+        elif col in do_not_touch:
+            cleaning_log.append(f"{col}: оставлен без изменений")
+        else:
+            # Если для колонки не указаны инструкции, и в ней есть пропуски, применяем дефолтное заполнение
+            if df[col].isnull().sum() > 0:
+                # Автоматически очищаем колонку по умолчанию
+                result = default_cleaning(df, col)
+                cleaning_log.append(f"{col}: содержит пропуски, не указан в инструкциях -> {result}")
+            else:
+                cleaning_log.append(f"{col}: без пропусков")
+    
+    # Сохраняем лог очистки в session_state
+    st.session_state["cleaning_log"] = cleaning_log
+    return cleaning_log
+
 
 # === PROMPTS ===
 
@@ -132,7 +217,7 @@ def post_prediction_advice(y_pred, model_type, target_name, user_goal):
             f"Использована модель {model_type} для предсказания '{target_name}'. "
             f"Пример предсказаний: {short_pred}. Цель пользователя: {user_goal}. "
             "Объясни простыми словами, что означают результаты, и дай рекомендации, что делать дальше, "
-            "обращая внимание на практические шаги для улучшения ситуации.(Консентрируйся на то что ответ был коротко и ясно!)"
+            "обращая внимание на практические шаги для улучшения ситуации. (Консентрируйся на то что ответ был коротко и ясно!)"
         )
         return get_chatgpt_response(prompt)
 
