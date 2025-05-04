@@ -2,7 +2,7 @@ import requests
 from dotenv import load_dotenv
 import os
 import streamlit as st
-import os
+import re
 import pandas as pd
 # Загрузка переменных окружения
 load_dotenv()
