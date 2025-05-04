@@ -3,6 +3,7 @@ import numpy as np
 import streamlit as st
 import matplotlib.pyplot as plt
 import seaborn as sns
+import openpyxl
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.linear_model import LogisticRegression
@@ -18,7 +19,6 @@ import re
 from AI_helper import get_chatgpt_response
 
 def load_data(uploaded_file):
-    import re
 
     filename = uploaded_file.name.lower()
     try:
@@ -123,85 +123,6 @@ def ask_gpt_smart_cleaning(summary):
     return get_chatgpt_response(prompt)
 
 
-def apply_gpt_cleaning(df, gpt_response):
-    import re
-    to_fill = {}
-    do_not_touch = []
-
-    # Извлечение рекомендаций GPT для заполнения
-    fill_part = re.search(r"- Заполнить:\s*(.*?)(?:\n|$)", gpt_response)
-    if fill_part:
-        for item in fill_part.group(1).split(','):
-            parts = item.strip().split(':')
-            if len(parts) == 2:
-                col, method = parts[0].strip(), parts[1].strip()
-                if col in df.columns:
-                    to_fill[col] = method
-
-    # Извлечение рекомендаций GPT для оставления без изменений
-    notouch_part = re.search(r"- Не трогать:\s*(.*)", gpt_response)
-    if notouch_part:
-        do_not_touch = [x.strip() for x in notouch_part.group(1).split(',') if x.strip() in df.columns]
-
-    cleaning_log = []
-
-    # Проходим по всем колонкам и применяем инструкции или дефолтную очистку
-    for col in df.columns:
-        if col in to_fill:
-            method = to_fill[col]
-            if df[col].isnull().sum() > 0:
-                try:
-                    if method == "mean":
-                        df[col].fillna(df[col].mean(), inplace=True)
-                        cleaning_log.append(f"{col}: заполнено (mean)")
-                    elif method == "median":
-                        df[col].fillna(df[col].median(), inplace=True)
-                        cleaning_log.append(f"{col}: заполнено (median)")
-                    elif method == "mode":
-                        mode_val = df[col].mode()
-                        if not mode_val.empty:
-                            df[col].fillna(mode_val[0], inplace=True)
-                            cleaning_log.append(f"{col}: заполнено (mode)")
-                        else:
-                            cleaning_log.append(f"{col}: не удалось заполнить (пустой mode)")
-                    else:
-                        cleaning_log.append(f"{col}: неизвестный метод заполнения ({method})")
-                except Exception as e:
-                    cleaning_log.append(f"{col}: ошибка при заполнении → {str(e)}")
-            else:
-                cleaning_log.append(f"{col}: пропусков нет, не требуется заполнение")
-        elif col in do_not_touch:
-            cleaning_log.append(f"{col}: оставлен без изменений")
-        else:
-            # Если для колонки не указаны инструкции, и в ней есть пропуски, применяем дефолтное заполнение
-            if df[col].isnull().sum() > 0:
-                # Автоматически очищаем колонку по умолчанию
-                result = default_cleaning(df, col)
-                cleaning_log.append(f"{col}: содержит пропуски, не указан в инструкциях -> {result}")
-            else:
-                cleaning_log.append(f"{col}: без пропусков")
-    
-    # Сохраняем лог очистки в session_state
-    st.session_state["cleaning_log"] = cleaning_log
-    return cleaning_log
-
-
-def default_cleaning(df, column):
-    """
-    Очищает колонку по умолчанию:
-    - Если числовая – заполняет пропуски средним.
-    - Если категориальная – заполняет наиболее частым значением (mode).
-    """
-    if pd.api.types.is_numeric_dtype(df[column]):
-        df[column].fillna(df[column].mean(), inplace=True)
-        return "очищено (mean)"
-    else:
-        mode_val = df[column].mode()
-        if not mode_val.empty:
-            df[column].fillna(mode_val[0], inplace=True)
-            return "очищено (mode)"
-        else:
-            return "очищение не выполнено (пустой mode)"
         
 def remove_outliers_iqr(df):
     """
