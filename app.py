@@ -6,11 +6,11 @@ import os
 import time
 from utils import (
     load_data, 
-    summarize_columns_for_gpt, ask_gpt_smart_cleaning, apply_gpt_cleaning,
-    plot_data_visualizations, train_model, plot_predictions, default_cleaning, remove_outliers_iqr, suggest_visualization_combinations
+    summarize_columns_for_gpt, ask_gpt_smart_cleaning,
+    plot_data_visualizations, train_model, plot_predictions, remove_outliers_iqr, suggest_visualization_combinations
 )
 from AI_helper import (
-    summarize_metrics, continue_chat, get_chatgpt_response, update_context, context
+    summarize_metrics, continue_chat, get_chatgpt_response, update_context, apply_gpt_cleaning, default_cleaning, context
 )
 
 # Конфигурация страницы
@@ -204,7 +204,7 @@ elif st.session_state["page"] == "Автообработка данных":
                 total_before = nulls_before.sum()
 
                 if total_before == 0:
-                    st.info("Пропущенных значений не найдено.", icon="✅")
+                    st.info("✅ Пропущенных значений не найдено.", icon="✅")
                 else:
                     st.markdown("#### 📉 Пропущенные значения до очистки:")
                     st.dataframe(nulls_before[nulls_before > 0])
