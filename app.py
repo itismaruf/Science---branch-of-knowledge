@@ -16,14 +16,21 @@ from AI_helper import (
 # Конфигурация страницы
 st.set_page_config(layout="wide")
 
-# Заставка при первом запуске
+# === Заставка ===
 if "app_loaded" not in st.session_state:
     st.markdown("""
         <style>
-            body {
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+
+            html, body {
                 margin: 0;
                 padding: 0;
+                height: 100%;
+                width: 100%;
+                font-family: 'Inter', sans-serif;
+                overflow: hidden;
             }
+
             .splash-container {
                 position: fixed;
                 top: 0; left: 0;
@@ -33,36 +40,94 @@ if "app_loaded" not in st.session_state:
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                background-color: var(--background-color);
-                color: var(--text-color);
+                background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+                color: #0f172a;
                 z-index: 9999;
-                font-family: 'Segoe UI', sans-serif;
+                animation: fadeIn 1s ease-in-out;
+                transition: opacity 1s ease-out;
             }
-                .splash-title {
-                    font-size: 3.2em;
-                    font-weight: bold;
-                    text-align: center;
-                    margin-bottom: 20px;
-                    margin-top: -5%; 
+
+            .splash-container.fade-out {
+                opacity: 0;
+                pointer-events: none;
+            }
+
+            .ai-emoji {
+                font-size: 3.2em;
+                margin-bottom: 20px;
+                animation: pulse 2s infinite;
+            }
+
+            .splash-title {
+                font-size: 2.4em;
+                font-weight: 700;
+                text-align: center;
+                opacity: 0;
+                animation: fadeUp 1.2s ease-out forwards;
+                animation-delay: 0.4s;
+            }
+
+            .splash-subtext {
+                font-size: 1em;
+                margin-top: 12px;
+                color: #475569;
+                opacity: 0;
+                animation: fadeUp 1.4s ease-out forwards;
+                animation-delay: 0.8s;
+                text-align: center;
+                max-width: 600px;
+                padding: 0 16px;
+            }
+
+            .splash-footer {
+                position: absolute;
+                bottom: 18px;
+                font-size: 0.8em;
+                color: #64748b;
+                text-align: center;
+            }
+
+            @keyframes fadeUp {
+                0% { opacity: 0; transform: translateY(20px); }
+                100% { opacity: 1; transform: translateY(0); }
+            }
+
+            @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+
+            @keyframes pulse {
+                0%, 100% {
+                    transform: scale(1);
+                    opacity: 1;
+                }
+                50% {
+                    transform: scale(1.15);
+                    opacity: 0.75;
                 }
             }
-            .splash-author {
-                position: absolute;
-                bottom: 20px;
-                right: 30px;
-                font-size: 0.9em;
-                color: gray;
-            }
         </style>
-        <div class="splash-container">
-            <div class="splash-title">🤖 Интеллектуальная система<br>автоматизации аналитических отчётов</div>
+
+        <div class="splash-container" id="splash">
+            <div class="ai-emoji">✨</div>
+            <div class="splash-title">ClariData</div>
+            <div class="splash-subtext">Интеллектуальная система анализа данных<br>с автоочисткой, визуализацией, предсказаниями и пояснениями</div>
+            <div class="splash-footer">© Created by Rahimov M.A.</div>
         </div>
+
+        <script>
+            setTimeout(() => {
+                const splash = document.getElementById("splash");
+                if (splash) splash.classList.add("fade-out");
+            }, 3000);
+        </script>
     """, unsafe_allow_html=True)
-    placeholder = st.empty()
-    time.sleep(1.5)
+
+    time.sleep(5)
     st.session_state.app_loaded = True
     st.rerun()
-
+    
 # --- Установка API-ключа из секретов, если есть ---
 if "OPENAI_API_KEY" in st.secrets:
     os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
