@@ -16,6 +16,7 @@ from AI_helper import (
 # Конфигурация страницы
 st.set_page_config(layout="wide")
 
+
 # === Заставка ===
 if "app_loaded" not in st.session_state:
     st.markdown("""
@@ -127,7 +128,8 @@ if "app_loaded" not in st.session_state:
     time.sleep(5)
     st.session_state.app_loaded = True
     st.rerun()
-    
+
+
 # --- Установка API-ключа из секретов, если есть ---
 if "OPENAI_API_KEY" in st.secrets:
     os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
@@ -135,6 +137,22 @@ if "OPENAI_API_KEY" in st.secrets:
 # --- Инициализация первой страницы при запуске ---
 if 'page' not in st.session_state:
     st.session_state['page'] = 'Загрузка данных'
+
+st.markdown("""
+    <style>
+        /* Когда сайдбар открыт (aria-expanded="true"), основной контент смещается вправо */
+        [data-testid="stSidebar"][aria-expanded="true"] ~ .main .block-container {
+            margin-left: 300px;
+            transition: margin-left 0.3s ease;
+        }
+        /* Когда сайдбар свернут (aria-expanded="false"), основной контент возвращается в исходное положение */
+        [data-testid="stSidebar"][aria-expanded="false"] ~ .main .block-container {
+            margin-left: 1rem;
+            transition: margin-left 0.3s ease;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 
 # --- Функция переключения страниц ---
 def set_page(page_name):
@@ -147,7 +165,8 @@ pages = {
     "Автообработка данных": "⚙️",
     "Визуализация": "📊",
     "Предсказание модели": "🔬",
-    "Разъяснение результатов (с ИИ)": "💬"
+    "Разъяснение результатов (с ИИ)": "💬",
+    "Документация": "📄"
 }
 
 # Настройка CSS для кнопок (цвета при наведении)
@@ -615,8 +634,18 @@ elif st.session_state["page"] == "Разъяснение результатов 
             st.markdown(f"**{speaker}:** {message}")
 
 
+if st.session_state.get("page") == "Документация":
+    st.title("📄 Документация проекта")
+    try:
+        with open("README.md", "r", encoding="utf-8") as f:
+            readme_content = f.read()
+        st.markdown(readme_content, unsafe_allow_html=True)
+    except FileNotFoundError:
+        st.error("Документация не найдена. Убедитесь, что файл README.md существует в проекте.")
+
+
 # Футер внизу страницы (автор)
-# Постоянная надпись внизу справа, вне зависимости от содержимого
+# Постоянная надпись внизу лево, вне зависимости от содержимого
 st.markdown("""
     <style>
         .bottom-right {
@@ -624,7 +653,7 @@ st.markdown("""
             right: 15px;
             bottom: 10px;
             font-size: 0.75em;
-            color: gray;
+            color: #333333;
             z-index: 9999;
         }
     </style>
