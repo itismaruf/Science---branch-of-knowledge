@@ -635,7 +635,6 @@ elif st.session_state["page"] == "Разъяснение результатов 
 
 
 if st.session_state.get("page") == "Документация":
-    st.title("📄 Документация проекта")
     try:
         with open("README.md", "r", encoding="utf-8") as f:
             readme_content = f.read()
