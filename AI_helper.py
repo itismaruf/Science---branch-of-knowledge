@@ -42,7 +42,7 @@ def get_chatgpt_response(prompt, model="meta-llama/llama-4-scout:free"):
     # Собираем текущий контекст в виде строк
     context_info = "\n".join([f"{key}: {value}" for key, value in context.items()])
     # Формируем полный запрос: сначала фиксированный контекст проекта, потом запрос
-    full_prompt = f"Контекст проекта:\n{context_info}\n\n{prompt}\n\nОтвечай кратко, конкретно и добавляй практические советы, если это уместно."
+    full_prompt = f"Контекст проекта:\n{context_info}\n\n{prompt}\n\nОтвечай кратко, конкретно и добавляй практические советы, если просять."
     chat_history.append({"role": "user", "content": full_prompt})
 
     try:
