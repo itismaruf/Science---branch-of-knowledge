@@ -35,7 +35,7 @@ def update_context(key, value):
     """Обновление контекста проекта (фиксирует информацию о данных и цели)."""
     context[key] = value
 
-def get_chatgpt_response(prompt, model="deepseek/deepseek-r1:free"):
+def get_chatgpt_response(prompt, model="meta-llama/llama-4-scout:free"):
     if not prompt or not isinstance(prompt, str):
         return "❌ Пустой или некорректный запрос."
 
