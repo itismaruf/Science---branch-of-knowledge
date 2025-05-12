@@ -596,7 +596,7 @@ elif st.session_state["page"] == "Разъяснение результатов 
     ]
 
     with st.container():
-        st.markdown("#### 💡 Частые вопросы")
+        st.markdown("#### 💡 Часто задаваемые вопросы")
         selected_question = st.radio("", suggested_questions, key="radio_question")
 
         if st.button("📥 Использовать выбранный вопрос"):
@@ -629,7 +629,7 @@ elif st.session_state["page"] == "Разъяснение результатов 
     # Отображаем историю чата
     if st.session_state.chat_history:
         st.markdown("---")
-        st.markdown("### 💬 История диалога")
+        st.markdown("#### 💬 История диалога")
         for speaker, message in st.session_state.chat_history:
             st.markdown(f"**{speaker}:** {message}")
 
@@ -656,5 +656,5 @@ st.markdown("""
             z-index: 9999;
         }
     </style>
-    <div class="bottom-right">© Created by Rahimov M.A.</div>
+    <div class="bottom-right">© Created by Rahimov M.A. - TTU </div>
 """, unsafe_allow_html=True)
