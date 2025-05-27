@@ -436,11 +436,18 @@ def train_model(df, target_column, model_type):
     X = df.drop(columns=[target_column])
     y = df[target_column]
 
-    # Исключение явно идентификаторных столбцов (например, ID)
+    # Улучшенная логика исключения идентификаторов
+    UNIQUE_THRESHOLD = 0.98
+    cols_to_drop = []
     for col in X.columns:
-        if X[col].nunique() == len(X[col]):
-            st.warning(f"⚠️ Столбец '{col}' выглядит как уникальный идентификатор и будет исключён из обучения.")
-            X = X.drop(columns=[col])
+        unique_ratio = X[col].nunique() / len(X)
+        if unique_ratio >= UNIQUE_THRESHOLD:
+            if X[col].dtype == "object" or X[col].dtype.name == "category":
+                cols_to_drop.append(col)
+                st.warning(f"⚠️ Столбец '{col}' выглядит как уникальный идентификатор (уникальность: {unique_ratio:.2%}) и будет исключён из обучения.")
+
+    if cols_to_drop:
+        X = X.drop(columns=cols_to_drop)
 
     # Кодирование категориальных признаков
     for col in X.select_dtypes(include='object').columns:
@@ -496,6 +503,7 @@ def train_model(df, target_column, model_type):
     st.success("✅ Модель обучена успешно! минутку...")
 
     return metrics, model, X_test, y_test, y_pred
+
 
 def suggest_optimal_model(df_info):
     """
